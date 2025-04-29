@@ -1,0 +1,56 @@
+import cv2
+import pytesseract
+from PIL import Image
+import os
+import MySQLdb
+
+# Set up database connection
+db = MySQLdb.connect(host="localhost", user="root", passwd="", db="customs_invoices")
+cursor = db.cursor()
+
+# Define the directory where scanned PDF's are stored
+pdf_dir = "/path/to/scanned/pdfs"
+
+# Loop through all files in the directory
+for file in os.listdir(pdf_dir):
+    if file.endswith(".jpg") or file.endswith(".png"):
+        image_path = os.path.join(pdf_dir, file)
+        
+        # Read the text from the scanned image using Gemma 3
+        custom_text = pytesseract.image_to_string(cv2.imread(image_path), lang='eng', config='-c tessedit_char_whitelist=0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz')
+        
+        # Split the text into lines and extract relevant data
+        lines = custom_text.splitlines()
+        invoice_number = None
+        date = None
+        from_party = None
+        to_party = None
+        goods_description = None
+        quantity = None
+        unit_price = None
+        total_value = None
+        
+        for line in lines:
+            if "Invoice Number:" in line:
+                invoice_number = line.split(":")[1].strip()
+            elif "Date:" in line:
+                date = line.split(":")[1].strip()
+            elif "From Party:" in line:
+                from_party = line.split(":")[1].strip()
+            elif "To Party:" in line:
+                to_party = line.split(":")[1].strip()
+            elif "Goods Description:" in line:
+                goods_description = line.split(":")[1].strip()
+            elif "Quantity:" in line or "QTY:" in line:
+                quantity = line.strip().split(":")[1]
+            elif "Unit Price:" in line or "UP:" in line:
+                unit_price = line.strip().split(":")[1]
+            elif "Total Value:" in line or "TV:" in line:
+                total_value = line.strip().split(":")[1]
+        
+        # Insert the extracted data into the database
+        query = """INSERT INTO customs_invoices (invoice_number, date, from_party, to_party, goods_description, quantity, unit_price, total_value) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)"""
+        cursor.execute(query, (invoice_number, date, from_party, to_party, goods_description, quantity, unit_price, total_value))
+        
+# Close the database connection
+db.close()
